@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speech-to-Text Analysis</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f9f9f9;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 20px;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 20px;
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        .transcription {
+            background-color: #ffffff;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            overflow-y: auto;
+            height: 500px;
+            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .transcription h2 {
+            font-size: 1.2rem;
+            margin-top: 0;
+            color: #333;
+        }
+
+        .transcription p {
+            font-size: 1rem;
+            color: #555;
+            line-height: 1.5;
+        }
+
+        .details {
+            background-color: #ffffff;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .details h2 {
+            font-size: 1.2rem;
+            margin-top: 0;
+            color: #333;
+        }
+
+        .details p {
+            font-size: 1rem;
+            color: #555;
+            margin: 10px 0;
+            line-height: 1.5;
+        }
+
+        .button-container {
+            margin-top: 15px;
+            text-align: center;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 1rem;
+            color: #fff;
+            background-color: #007bff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 0 5px;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- First Column: Transcription -->
+        <div class="transcription">
+            <h2>Transcription</h2>
+            <div id="transcriptionFeed">
+                <p>Speak into the microphone to see live transcription.</p>
+            </div>
+        </div>
+
+        <!-- Second Column: Details -->
+        <div class="details">
+            <h2>Details</h2>
+            <p><strong>Question Identified:</strong> <span id="question">N/A</span></p>
+            <p><strong>LLM Decision:</strong> <span id="decision">N/A</span></p>
+            <p><strong>Answer:</strong> <span id="answer">N/A</span></p>
+            <div class="button-container">
+                <button id="startBtn" onclick="startRecording()">Start Recording</button>
+                <button id="stopBtn" onclick="stopRecording()" disabled>Stop Recording</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let mediaRecorder;
+        let audioChunks = [];
+        const transcriptionFeed = document.getElementById("transcriptionFeed");
+        const questionElement = document.getElementById("question");
+        const decisionElement = document.getElementById("decision");
+        const answerElement = document.getElementById("answer");
+
+        async function startRecording() {
+            try {
+                // Request microphone access
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+                mediaRecorder = new MediaRecorder(stream);
+                document.getElementById("startBtn").disabled = true;
+                document.getElementById("stopBtn").disabled = false;
+
+                audioChunks = [];
+
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                    }
+                };
+
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    audioChunks = [];
+
+                    // Send audio to backend
+                    const formData = new FormData();
+                    formData.append('audio', audioBlob, 'recording.wav');
+
+                    const response = await fetch('http://127.0.0.1:5000/transcribe', {
+                        method: 'POST',
+                        body: formData,
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        const transcription = data.transcription || "No transcription available.";
+                        addToTranscriptionFeed(transcription);
+
+                        // Assume backend returns "question", "decision", and "answer"
+                        questionElement.textContent = data.question || "N/A";
+                        decisionElement.textContent = data.decision || "N/A";
+                        answerElement.textContent = data.answer || "N/A";
+                    } else {
+                        addToTranscriptionFeed("Error processing transcription.");
+                    }
+
+                    document.getElementById("startBtn").disabled = false;
+                    document.getElementById("stopBtn").disabled = true;
+                };
+
+                mediaRecorder.start();
+            } catch (error) {
+                addToTranscriptionFeed(`Error accessing microphone: ${error.message}`);
+            }
+        }
+
+        function stopRecording() {
+            mediaRecorder.stop();
+            document.getElementById("stopBtn").disabled = true;
+        }
+
+        function addToTranscriptionFeed(text) {
+            const paragraph = document.createElement("p");
+            paragraph.textContent = text;
+            transcriptionFeed.appendChild(paragraph);
+
+            // Scroll to the bottom of the feed
+            transcriptionFeed.scrollTop = transcriptionFeed.scrollHeight;
+        }
+    </script>
+</body>
+</html>
