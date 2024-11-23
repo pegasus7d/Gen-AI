@@ -106,8 +106,9 @@
         <!-- Second Column: Details -->
         <div class="details">
             <h2>Details</h2>
+            <p><strong>Transcription:</strong> <span id="transcription">N/A</span></p>
             <p><strong>Question Identified:</strong> <span id="question">N/A</span></p>
-            <p><strong>LLM Decision:</strong> <span id="decision">N/A</span></p>
+            <p><strong>Decision:</strong> <span id="decision">N/A</span></p>
             <p><strong>Answer:</strong> <span id="answer">N/A</span></p>
             <div class="button-container">
                 <button id="startBtn" onclick="startRecording()">Start Recording</button>
@@ -120,12 +121,14 @@
         let mediaRecorder;
         let audioChunks = [];
         const transcriptionFeed = document.getElementById("transcriptionFeed");
+        const transcriptionElement = document.getElementById("transcription");
         const questionElement = document.getElementById("question");
         const decisionElement = document.getElementById("decision");
         const answerElement = document.getElementById("answer");
 
         async function startRecording() {
             try {
+                console.log("Starting recording...");
                 // Request microphone access
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
@@ -142,29 +145,39 @@
                 };
 
                 mediaRecorder.onstop = async () => {
+                    console.log("Recording stopped.");
                     const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
                     audioChunks = [];
 
                     // Send audio to backend
+                    console.log("Sending audio to the backend...");
                     const formData = new FormData();
                     formData.append('audio', audioBlob, 'recording.wav');
 
-                    const response = await fetch('http://127.0.0.1:5000/transcribe', {
-                        method: 'POST',
-                        body: formData,
-                    });
+                    try {
+                        const response = await fetch('http://127.0.0.1:5000/process_audio', {
+                            method: 'POST',
+                            body: formData,
+                        });
 
-                    if (response.ok) {
-                        const data = await response.json();
-                        const transcription = data.transcription || "No transcription available.";
-                        addToTranscriptionFeed(transcription);
+                        if (response.ok) {
+                            const data = await response.json();
+                            console.log("Received response from backend:", data);
 
-                        // Assume backend returns "question", "decision", and "answer"
-                        questionElement.textContent = data.question || "N/A";
-                        decisionElement.textContent = data.decision || "N/A";
-                        answerElement.textContent = data.answer || "N/A";
-                    } else {
-                        addToTranscriptionFeed("Error processing transcription.");
+                            const transcription = data.transcription || "No transcription available.";
+                            transcriptionElement.textContent = transcription;
+                            questionElement.textContent = data.question || "N/A";
+                            decisionElement.textContent = data.decision || "N/A";
+                            answerElement.textContent = data.answer || "N/A";
+
+                            addToTranscriptionFeed(transcription);
+                        } else {
+                            console.error("Error processing transcription on the backend.");
+                            addToTranscriptionFeed("Error processing transcription.");
+                        }
+                    } catch (error) {
+                        console.error("Error fetching results from the backend:", error);
+                        addToTranscriptionFeed(`Error fetching results: ${error.message}`);
                     }
 
                     document.getElementById("startBtn").disabled = false;
@@ -172,12 +185,15 @@
                 };
 
                 mediaRecorder.start();
+                console.log("Recording started.");
             } catch (error) {
+                console.error("Error accessing microphone:", error);
                 addToTranscriptionFeed(`Error accessing microphone: ${error.message}`);
             }
         }
 
         function stopRecording() {
+            console.log("Stopping recording...");
             mediaRecorder.stop();
             document.getElementById("stopBtn").disabled = true;
         }
